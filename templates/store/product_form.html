@@ -1,0 +1,329 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="d-sm-flex align-items-center justify-content-between mb-4">
+    <h1 class="h3 mb-0 text-gray-800">{% if product %}Update{% else %}Add{% endif %} Product</h1>
+</div>
+
+<div class="card shadow mb-4">
+    <div class="card-body">
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            <div class="row">
+                <div class="col-md-6 mb-3" style="position:relative;">
+                    <label for="barcode" class="form-label">Barcode</label>
+                    <div class="d-flex align-items-start">
+                        <input type="text" class="form-control" id="barcode" name="barcode" value="{{ product.barcode }}" required autofocus>
+                        <select id="scanner-camera-select" class="form-select form-select-sm ms-2" style="width:210px; display:inline-block;">
+                            <option value="">Select camera (default)</option>
+                        </select>
+                    </div>
+                    <small class="text-muted">Scan barcode or enter manually</small>
+
+                    <!-- camera preview removed from UI - scanner runs hidden in background -->
+                    <div id="scanner-reader" class="scanner-hidden"></div>
+                    <input id="upload-file" type="file" accept="image/*" style="display:none" />
+                    <span id="scan-status" class="small text-muted ms-2" style="display:none;">Scanning…</span>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="name" class="form-label">Product Name</label>
+                    <input type="text" class="form-control" id="name" name="name" value="{{ product.name }}" required>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label for="price" class="form-label">Selling Price</label>
+                    <input type="number" step="0.01" class="form-control" id="price" name="price"
+                        value="{{ product.price }}" required>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label for="cost" class="form-label">Cost Price</label>
+                    <input type="number" step="0.01" class="form-control" id="cost" name="cost"
+                        value="{{ product.cost }}" required>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label for="stock" class="form-label">Stock Quantity</label>
+                    <input type="number" class="form-control" id="stock" name="stock"
+                        value="{{ product.stock_quantity }}" required>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="gst" class="form-label">GST %</label>
+                    <input type="number" step="0.01" class="form-control" id="gst" name="gst"
+                        value="{{ product.gst_percentage }}" required>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="category" class="form-label">Category</label>
+                    <select class="form-select" id="category" name="category" required>
+                        <option value="">-- Select category --</option>
+                        {% for cat in categories %}
+                            <option value="{{ cat.id }}" {% if product and product.category and product.category.id == cat.id %}selected{% endif %}>{{ cat.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Save Product</button>
+            <a href="{% url 'product_list' %}" class="btn btn-secondary">Cancel</a>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/quagga@0.12.1/dist/quagga.min.js"></script>
+<script>
+    let productScanning = false;
+    let selectedCameraId = null;
+
+    // populate camera selection UI and warm up permissions
+    async function listProductCameras() {
+        try {
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    stream.getTracks().forEach(t => t.stop());
+                } catch (permErr) {
+                    console.debug('camera permission not granted', permErr);
+                }
+            }
+
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const cameras = devices.filter(d => d.kind === 'videoinput');
+            const select = $('#scanner-camera-select');
+            select.empty();
+            select.append($('<option>').val('').text('Default camera (auto)'));
+            if (!cameras || cameras.length === 0) {
+                select.append($('<option>').text('No cameras found'));
+                return;
+            }
+            cameras.forEach((cam, i) => select.append($('<option>').val(cam.deviceId).text(cam.label || `Camera ${i+1}`)));
+
+            const envCam = cameras.find(d => /back|rear|environment|builtin/i.test(d.label));
+            selectedCameraId = envCam ? envCam.deviceId : (cameras[0] && cameras[0].deviceId);
+            // preset select value to selectedCameraId when available
+            if (selectedCameraId) select.val(selectedCameraId);
+        } catch (e) {
+            console.error('listProductCameras error', e);
+        }
+    }
+
+    function startProductScanner(deviceId) {
+        if (productScanning) return;
+
+        // prefer explicitly selected camera if no param provided
+        if (!deviceId && selectedCameraId) deviceId = selectedCameraId;
+
+        // Show container BEFORE starting camera
+        $('#scanner-reader').show();
+        $('#scanner-overlay').show();
+        $('#scan-status').text('Initializing camera...').show();
+
+        // Clear the container and ensure it has proper structure
+        const readerDiv = document.querySelector('#scanner-reader');
+        readerDiv.innerHTML = '<video style="width:100%; height:100%; object-fit: cover;"></video><div class="small-hint">Hold barcode here</div>';
+
+        // verify Quagga is loaded and browser supports media APIs
+        if (typeof Quagga === 'undefined') {
+            console.error('QuaggaJS library not loaded');
+            $('#scan-status').text('Scanner library not loaded').addClass('text-danger').show();
+            return;
+        }
+
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            console.error('getUserMedia not supported in this browser');
+            $('#scan-status').text('Camera not supported by this browser').addClass('text-danger').show();
+            return;
+        }
+
+        console.log('Starting product scanner, deviceId=', deviceId);
+
+        // Build QuaggaJS config for 1D retail barcodes (EAN, UPC, CODE128, etc.)
+        const config = {
+            inputStream: {
+                name: 'Live',
+                type: 'LiveStream',
+                target: readerDiv,
+                constraints: {
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    facingMode: 'environment'
+                },
+                area: {
+                    top: '30%',
+                    right: '5%',
+                    left: '5%',
+                    bottom: '20%'
+                }
+            },
+            decoder: {
+                readers: [
+                    'ean_reader',
+                    'ean_8_reader',
+                    'upc_reader',
+                    'upc_e_reader',
+                    'code_128_reader',
+                    'code_39_reader',
+                    'codabar_reader',
+                    'i2of5_reader',
+                    // 'qr_reader' removed - Quagga core doesn't include QR reader in worker builds
+                ],
+                debug: {
+                    showCanvas: true,
+                    showPatternName: false,
+                    showConfidence: true,
+                    showMultiline: false
+                }
+            },
+            locator: {
+                patchSize: 'large',
+                halfSample: false
+            },
+            numOfWorkers: Math.max(1, (navigator.hardwareConcurrency || 2) - 1),
+            frequency: 12
+        };
+
+        // If a specific device is selected, handle it via getUserMedia constraints
+        if (deviceId) {
+            config.inputStream.constraints.deviceId = { exact: deviceId };
+            console.log('Using deviceId constraint for camera:', deviceId);
+        }
+
+        Quagga.init(config, (err) => {
+            if (err) {
+                console.error('Quagga init failed:', err);
+                $('#scan-status').text('Camera failed to start: ' + (err && err.message ? err.message : err)).addClass('text-danger');
+                console.log('Config used:', config);
+                return;
+            }
+
+            console.log('Quagga initialized successfully, starting stream...');
+            try {
+                Quagga.start();
+                productScanning = true;
+                $('#scan-status').text('Scanning... Point barcode at camera').removeClass('text-danger').removeClass('text-success');
+
+                // Set up detection handler
+                Quagga.onDetected((result) => {
+                    if (result && result.codeResult && result.codeResult.code) {
+                        const barcode = result.codeResult.code;
+                        console.log('Barcode detected:', barcode);
+                        $('#barcode').val(barcode);
+                        $('#scan-status').text('✓ Barcode detected: ' + barcode).addClass('text-success');
+                        stopProductScanner();
+                    }
+                });
+
+                Quagga.onProcessed(function(result) {
+                    // keep light logging to aid debugging; remove in production
+                    if (result && result.boxes && result.boxes.length) {
+                        // console.debug('processed boxes', result.boxes.length);
+                    }
+                });
+            } catch (startErr) {
+                console.error('Quagga start failed:', startErr);
+                $('#scan-status').text('Failed to start camera stream: ' + (startErr && startErr.message ? startErr.message : startErr)).addClass('text-danger');
+            }
+        });
+    }
+
+    function stopProductScanner() {
+        if (!productScanning) return;
+
+        try {
+            Quagga.stop();
+            Quagga.offDetected();
+        } catch (e) {
+            console.warn('Quagga stop error:', e);
+        }
+
+        productScanning = false;
+        try {
+            const rd = document.querySelector('#scanner-reader');
+            if (rd) rd.innerHTML = '';
+        } catch (e) { }
+        $('#scan-status').hide().removeClass('text-success text-danger');
+    }
+
+    // UI bindings
+    // start-scan button removed; scanning auto-starts on input focus
+
+    // Auto-start scanner when barcode input receives focus (user gesture)
+    $('#barcode').on('focus', async function () {
+        if (productScanning) return;
+        await listProductCameras();
+        // use user-selected camera when available
+        startProductScanner(selectedCameraId);
+    });
+
+    // camera selection changed
+    $('#scanner-camera-select').on('change', function () {
+        const val = $(this).val();
+        selectedCameraId = val || null;
+        if (productScanning) {
+            // restart scanning with new device
+            stopProductScanner();
+            setTimeout(() => startProductScanner(selectedCameraId), 300);
+        }
+    });
+
+    // File upload fallback: decode barcode from uploaded image using QuaggaJS
+    $('#upload-file').on('change', function (e) {
+        const f = this.files && this.files[0];
+        if (!f) return;
+
+        $('#scan-status').text('Scanning image...').show();
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => {
+                // Create temporary canvas for image scanning
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+
+                // Use QuaggaJS to decode from canvas
+                Quagga.decodeSingle({
+                    src: canvas.toDataURL(),
+                    numOfWorkers: 2,
+                    inputStream: {
+                        size: 800
+                    },
+                    decoder: {
+                        readers: [
+                            'ean_reader',
+                            'ean_8_reader',
+                            'upc_reader',
+                            'upc_e_reader',
+                            'code_128_reader',
+                            'code_39_reader',
+                            'codabar_reader',
+                            'i2of5_reader',
+                            // 'qr_reader' removed - Quagga core doesn't include QR reader in worker builds
+                        ]
+                    }
+                }, (result) => {
+                    if (result && result.codeResult) {
+                        $('#barcode').val(result.codeResult.code);
+                        $('#scan-status').text('Image decoded: ' + result.codeResult.code).addClass('text-success');
+                        setTimeout(() => {
+                            $('#scan-status').fadeOut(2000);
+                            $('#upload-file').val('');
+                        }, 1000);
+                    } else {
+                        $('#scan-status').text('No barcode found in image').addClass('text-danger');
+                    }
+                });
+            };
+            img.src = event.target.result;
+        };
+        reader.readAsDataURL(f);
+    });
+</script>
+{% endblock %}

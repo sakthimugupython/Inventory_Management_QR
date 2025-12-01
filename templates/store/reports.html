@@ -1,0 +1,189 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="d-sm-flex align-items-center justify-content-between mb-4">
+    <h1 class="h3 mb-0 text-gray-800">Reports</h1>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-6">
+        <div class="card shadow-sm">
+            <div class="card-body d-flex gap-1 align-items-center">
+                <label class="mb-0">From</label>
+                <input id="start-date" type="date" class="form-control form-control-sm" />
+                <label class="mb-0">To</label>
+                <input id="end-date" type="date" class="form-control form-control-sm" />
+                <select id="granularity" class="form-select form-select-sm" style="width:160px;">
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                </select>
+                <button id="refresh-report" class="btn btn-primary btn-sm">Apply</button>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 text-end">
+        <div class="btn-group">
+            <button id="export-csv" class="btn btn-outline-secondary btn-sm">Export CSV</button>
+            <button id="export-pdf" class="btn btn-outline-secondary btn-sm">Export PDF</button>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-12">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold text-primary">Sales Performance</h6>
+                <small id="report-summary" class="text-muted">&nbsp;</small>
+            </div>
+            <div class="card-body">
+                <canvas id="salesChart" style="height: 320px;"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">Breakdown</h6>
+        </div>
+        <div class="card-body">
+            <table id="breakdown-table" class="table table-bordered" width="100%" cellspacing="0">
+                <thead>
+                    <tr>
+                        <th>Period</th>
+                        <th>Total Sales</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in sales_data %}
+                        <tr>
+                            <td>{{ item.date_added__date }}</td>
+                            <td>₹{{ item.total }}</td>
+                        </tr>
+                    {% endfor %}
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script>
+    (function() {
+        // utilities
+        function qs(sel) { return document.querySelector(sel); }
+        function qsa(sel) { return Array.from(document.querySelectorAll(sel)); }
+
+        const startInput = qs('#start-date');
+        const endInput = qs('#end-date');
+        const gran = qs('#granularity');
+        const refreshBtn = qs('#refresh-report');
+        const csvBtn = qs('#export-csv');
+        const pdfBtn = qs('#export-pdf');
+        const chartEl = qs('#salesChart');
+        const summary = qs('#report-summary');
+        const tableBody = qs('#breakdown-table tbody');
+
+        // default last 30 days
+        const today = new Date();
+        const prior = new Date(); prior.setDate(prior.getDate() - 29);
+        const toDate = today.toISOString().slice(0,10);
+        const fromDate = prior.toISOString().slice(0,10);
+        startInput.value = fromDate;
+        endInput.value = toDate;
+
+        let salesChart = null;
+
+        async function fetchData() {
+            const s = startInput.value;
+            const e = endInput.value;
+            const g = gran.value;
+            const url = new URL(window.location.origin + '{% url "reports_data" %}');
+            url.searchParams.set('start_date', s);
+            url.searchParams.set('end_date', e);
+            url.searchParams.set('granularity', g);
+            const res = await fetch(url.href);
+            const json = await res.json();
+            return json;
+        }
+
+        function renderChart(labels, totals) {
+            if (salesChart) salesChart.destroy();
+            const ctx = chartEl.getContext('2d');
+            salesChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Sales',
+                        data: totals,
+                        backgroundColor: 'rgba(54, 162, 235, 0.6)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: { tooltip: { mode: 'index' } }
+                }
+            });
+        }
+
+        function renderTable(labels, totals) {
+            tableBody.innerHTML = '';
+            for (let i = 0; i < labels.length; i++) {
+                const tr = document.createElement('tr');
+                const td1 = document.createElement('td'); td1.textContent = labels[i];
+                const td2 = document.createElement('td'); td2.textContent = '₹' + Number(totals[i]).toFixed(2);
+                tr.appendChild(td1); tr.appendChild(td2);
+                tableBody.appendChild(tr);
+            }
+        }
+
+        async function updateReport() {
+            summary.textContent = 'Loading...';
+            const data = await fetchData();
+            renderChart(data.labels, data.totals);
+            renderTable(data.labels, data.totals);
+            summary.textContent = `Total: ₹${Number(data.grand_total).toFixed(2)} — ${data.labels.length} periods`;
+        }
+
+        refreshBtn.addEventListener('click', updateReport);
+
+        csvBtn.addEventListener('click', async function () {
+            const data = await fetchData();
+            if (!data || !data.labels) return alert('No data');
+            let csv = 'Period,Total\n';
+            for (let i=0;i<data.labels.length;i++) csv += `${data.labels[i]},${data.totals[i]}\n`;
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `sales_report_${gran.value}_${startInput.value}_${endInput.value}.csv`;
+            document.body.appendChild(a); a.click(); a.remove();
+        });
+
+        pdfBtn.addEventListener('click', async function () {
+            // capture chart and table and build PDF
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF('landscape');
+            const node = document.querySelector('.card.mb-4'); // chart card container
+            await html2canvas(node, { scale: 2 }).then((canvas) => {
+                const img = canvas.toDataURL('image/png');
+                const imgProps = doc.getImageProperties(img);
+                const pdfWidth = doc.internal.pageSize.getWidth();
+                const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+                doc.addImage(img, 'PNG', 10, 10, pdfWidth - 20, pdfHeight - 20);
+                doc.save(`sales_report_${gran.value}_${startInput.value}_${endInput.value}.pdf`);
+            });
+        });
+
+        // initial load
+        updateReport();
+    })();
+</script>
+{% endblock %}

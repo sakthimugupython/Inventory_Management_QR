@@ -1,0 +1,114 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="d-sm-flex align-items-center justify-content-between mb-4">
+    <h1 class="h3 mb-0 text-gray-800">Inventory</h1>
+    <div class="d-flex gap-2">
+        <a href="{% url 'category_list' %}" class="btn btn-sm btn-info shadow-sm">
+            <i class="fas fa-list fa-sm"></i> Categories
+        </a>
+        <a href="{% url 'product_create' %}" class="d-none d-sm-inline-block btn btn-sm btn-primary shadow-sm">
+            <i class="fas fa-plus fa-sm text-white-50"></i> Add Product
+        </a>
+    </div>
+</div>
+
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">Product List</h6>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
+                <thead>
+                    <tr>
+                        <th>Barcode</th>
+                        <th>Name</th>
+                        <th>Category</th>
+                        <th>Price</th>
+                        <th>Stock</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for product in page_obj %}
+                    <tr>
+                        <td>{{ product.barcode }}</td>
+                        <td>{{ product.name }}</td>
+                        <td>{{ product.category.name }}</td>
+                        <td>₹{{ product.price }}</td>
+                        <td>
+                            {% if product.stock_quantity < 10 %}
+                                <span class="badge bg-danger">{{ product.stock_quantity }}</span>
+                            {% else %}
+                                {{ product.stock_quantity }}
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{% url 'product_update' product.pk %}" class="btn btn-info btn-sm">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            <a href="{% url 'product_delete' product.pk %}" class="btn btn-danger btn-sm">
+                                <i class="fas fa-trash"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        <nav aria-label="Page navigation">
+            <ul class="pagination justify-content-center">
+                {% if page_obj.has_previous %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}" aria-label="Previous">
+                        <span aria-hidden="true">&laquo;</span>
+                    </a>
+                </li>
+                {% else %}
+                <li class="page-item disabled">
+                    <span class="page-link"><span aria-hidden="true">&laquo;</span></span>
+                </li>
+                {% endif %}
+
+                {# Show first page link and ellipsis when page window does not include 1 #}
+                {% if page_numbers and page_numbers|first > 1 %}
+                    <li class="page-item"><a class="page-link" href="?page=1">1</a></li>
+                    {% if page_numbers|first > 2 %}
+                        <li class="page-item disabled"><span class="page-link">&hellip;</span></li>
+                    {% endif %}
+                {% endif %}
+
+                {# Render visible page numbers #}
+                {% for i in page_numbers %}
+                    <li class="page-item {% if page_obj.number == i %}active{% endif %}">
+                        <a class="page-link" href="?page={{ i }}">{{ i }}</a>
+                    </li>
+                {% endfor %}
+
+                {# Show last page link and ellipsis when needed #}
+                {% if page_numbers and page_numbers|last < total_pages %}
+                    {% if page_numbers|last < total_pages|add:'-1' %}
+                        <li class="page-item disabled"><span class="page-link">&hellip;</span></li>
+                    {% endif %}
+                    <li class="page-item"><a class="page-link" href="?page={{ total_pages }}">{{ total_pages }}</a></li>
+                {% endif %}
+
+                {% if page_obj.has_next %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.next_page_number }}" aria-label="Next">
+                        <span aria-hidden="true">&raquo;</span>
+                    </a>
+                </li>
+                {% else %}
+                <li class="page-item disabled">
+                    <span class="page-link"><span aria-hidden="true">&raquo;</span></span>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+    </div>
+</div>
+{% endblock %}

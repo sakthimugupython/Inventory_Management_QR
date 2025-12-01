@@ -1,0 +1,313 @@
+:root {
+    --primary-color: #6c5ce7;
+    /* Soft Purple */
+    --secondary-color: #a29bfe;
+    /* Light Purple */
+    --success-color: #00b894;
+    /* Mint Green */
+    --info-color: #74b9ff;
+    /* Soft Blue */
+    --warning-color: #fdcb6e;
+    /* Soft Orange */
+    --danger-color: #ff7675;
+    /* Soft Red */
+    --dark-color: #2d3436;
+    --light-color: #dfe6e9;
+    --sidebar-bg: linear-gradient(180deg, #6c5ce7 0%, #a29bfe 100%);
+    --sidebar-width: 250px;
+    --card-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
+    --border-radius: 20px;
+    --bg-color: #f3f4f8;
+    /* Very light lavender/grey */
+}
+
+body {
+    font-family: 'Nunito', sans-serif;
+    background-color: var(--bg-color);
+    overflow-x: hidden;
+    color: #636e72;
+}
+
+#wrapper {
+    display: flex;
+    width: 100%;
+    align-items: stretch;
+}
+
+#sidebar {
+    min-width: var(--sidebar-width);
+    max-width: var(--sidebar-width);
+    background: var(--sidebar-bg);
+    color: #fff;
+    min-height: 100vh;
+    transition: all 0.3s;
+    box-shadow: 5px 0 15px rgba(0, 0, 0, 0.05);
+    z-index: 100;
+}
+
+#sidebar .sidebar-brand {
+    height: 5rem;
+    text-decoration: none;
+    font-size: 1.5rem;
+    font-weight: 800;
+    padding: 1.5rem 1rem;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.05rem;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#sidebar ul.components {
+    padding: 20px 10px;
+}
+
+#sidebar ul li {
+    margin-bottom: 5px;
+}
+
+#sidebar ul li a {
+    padding: 15px 20px;
+    display: block;
+    color: rgba(255, 255, 255, 0.8);
+    text-decoration: none;
+    font-weight: 600;
+    transition: 0.3s;
+    border-radius: 15px;
+}
+
+#sidebar ul li a:hover,
+#sidebar ul li.active>a {
+    color: #6c5ce7;
+    background: #fff;
+    box-shadow: 0 5px 10px rgba(0, 0, 0, 0.1);
+}
+
+#sidebar ul li a i {
+    margin-right: 15px;
+    width: 20px;
+    text-align: center;
+}
+
+#content {
+    width: 100%;
+    padding: 30px;
+    min-height: 100vh;
+    transition: all 0.3s;
+}
+
+.card {
+    border: none;
+    border-radius: var(--border-radius);
+    box-shadow: var(--card-shadow);
+    margin-bottom: 30px;
+    background-color: #fff;
+    transition: transform 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+}
+
+.card-header {
+    background-color: transparent;
+    border-bottom: 1px solid #f0f0f0;
+    font-weight: 700;
+    color: var(--primary-color);
+    padding: 20px 25px;
+    border-top-left-radius: var(--border-radius) !important;
+    border-top-right-radius: var(--border-radius) !important;
+}
+
+.card-body {
+    padding: 25px;
+}
+
+.btn {
+    border-radius: 10px;
+    padding: 10px 20px;
+    font-weight: 600;
+    box-shadow: 0 4px 6px rgba(50, 50, 93, 0.11), 0 1px 3px rgba(0, 0, 0, 0.08);
+    transition: all 0.15s ease;
+}
+
+.btn-primary {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.btn-primary:hover {
+    background-color: #5649c0;
+    border-color: #5649c0;
+    transform: translateY(-1px);
+}
+
+.btn-success {
+    background-color: var(--success-color);
+    border-color: var(--success-color);
+}
+
+.btn-info {
+    background-color: var(--info-color);
+    border-color: var(--info-color);
+    color: white;
+}
+
+.form-control {
+    border-radius: 10px;
+    padding: 12px 15px;
+    border: 1px solid #e3e6f0;
+    background-color: #fdfdfd;
+}
+
+.form-control:focus {
+    box-shadow: 0 0 0 0.2rem rgba(108, 92, 231, 0.25);
+    border-color: var(--primary-color);
+}
+
+/* Navbar */
+.navbar {
+    background-color: transparent !important;
+    box-shadow: none !important;
+    padding-bottom: 20px;
+}
+
+.navbar .btn-primary {
+    background-color: #fff;
+    color: var(--primary-color);
+    border: none;
+}
+
+/* Tables */
+.table {
+    color: #636e72;
+}
+
+.table th {
+    border-top: none;
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 0.85rem;
+    color: #b2bec3;
+    letter-spacing: 0.5px;
+}
+
+.table td {
+    vertical-align: middle;
+    border-top: 1px solid #f0f0f0;
+}
+
+/* Compact scanner preview used by product/billing pages */
+.scanner-compact {
+    width: 260px !important;
+    height: 150px !important;
+    min-height: 0 !important;
+    position: absolute;
+    right: 12px;
+    top: 36px;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #000;
+    box-shadow: 0 6px 14px rgba(0,0,0,0.2);
+    z-index: 40;
+}
+
+.scanner-compact video,
+.scanner-compact canvas {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+}
+
+.scanner-compact .small-hint {
+    position: absolute;
+    left: 8px;
+    bottom: 6px;
+    color: #fff;
+    font-size: 11px;
+    background: rgba(0,0,0,0.35);
+    padding: 3px 6px;
+    border-radius: 4px;
+}
+
+/* Hidden but attached scanner target - keeps video element in DOM but invisible */
+.scanner-hidden {
+    width: 2px !important;
+    height: 2px !important;
+    position: absolute !important;
+    left: -9999px !important;
+    top: -9999px !important;
+    overflow: hidden !important;
+    visibility: hidden !important;
+}
+
+/* Billing specific */
+.billing-table th,
+.billing-table td {
+    vertical-align: middle;
+}
+
+.total-section {
+    font-size: 1.5rem;
+    font-weight: 800;
+    text-align: right;
+    margin-top: 20px;
+    color: var(--primary-color);
+}
+
+/* Dashboard Cards */
+.border-left-primary {
+    border-left: none !important;
+    position: relative;
+    overflow: hidden;
+}
+
+.border-left-primary::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    width: 5px;
+    background-color: var(--primary-color);
+}
+
+.text-gray-800 {
+    color: #2d3436 !important;
+}
+
+.text-gray-300 {
+    color: #dfe6e9 !important;
+}
+
+/* Scanner overlay animation */
+#scanner-overlay div {
+        height: 3px;
+        background: linear-gradient(90deg, rgba(255,255,255,0.06), rgba(255,255,255,0.6));
+        animation: scanline 1.8s linear infinite;
+}
+
+@keyframes scanline {
+    0% { transform: translateX(-100%); opacity: 0; }
+    50% { transform: translateX(0); opacity: 0.9; }
+    100% { transform: translateX(100%); opacity: 0; }
+}
+
+/* Ensure html5-qrcode preview fills the container and is visible */
+#scanner-reader, #reader {
+    display: block !important;
+    width: 100%;
+    min-height: 220px;
+    background: #000;
+}
+
+#scanner-reader video, #reader video, #scanner-reader canvas, #reader canvas {
+    width: 100% !important;
+    height: auto !important;
+    object-fit: cover !important;
+    display: block !important;
+}
+
+.html5-qrcode-center{display:flex;align-items:center;justify-content:center}

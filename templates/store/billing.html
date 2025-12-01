@@ -1,0 +1,408 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row">
+    <!-- Billing Section -->
+    <div class="col-lg-8">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold text-primary">Billing Section</h6>
+            </div>
+            <div class="card-body" style="position:relative;">
+                <!-- camera preview removed from UI; scanning runs hidden in background -->
+                <div id="reader" class="scanner-hidden"></div>
+
+                <div class="input-group mb-3">
+                    <input type="text" id="barcode-input" class="form-control"
+                        placeholder="Scan Barcode or Enter Product ID" autofocus>
+                    <select id="camera-select" class="form-select form-select-sm ms-2" style="width:220px; display:inline-block;">
+                        <option value="">Default camera (auto)</option>
+                    </select>
+                    <button class="btn btn-primary" type="button" id="add-btn">Add</button>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table table-bordered billing-table">
+                        <thead>
+                            <tr>
+                                <th>Product</th>
+                                <th>Price</th>
+                                <th>Qty</th>
+                                <th>Total</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cart-body">
+                            <!-- Items will be added here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Summary Section -->
+    <div class="col-lg-4">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">Summary</h6>
+            </div>
+            <div class="card-body">
+                <div class="form-group mb-3">
+                    <label>Customer Name</label>
+                    <input type="text" id="customer-name" class="form-control" placeholder="Optional">
+                </div>
+
+                <div class="d-flex justify-content-between mb-2">
+                    <span>Subtotal:</span>
+                    <span id="subtotal">₹0.00</span>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span>GST:</span>
+                    <span id="gst-total">₹0.00</span>
+                </div>
+                <hr>
+                <div class="d-flex justify-content-between mb-4 total-section">
+                    <span>Total:</span>
+                    <span id="grand-total" class="text-primary">₹0.00</span>
+                </div>
+
+                <button class="btn btn-success btn-lg w-100" id="generate-bill">
+                    <i class="fas fa-print"></i> Generate Bill
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/quagga@0.12.1/dist/quagga.min.js"></script>
+<script>
+    let cart = [];
+
+    // Barcode Scanner (USB) - acts as keyboard
+    $('#barcode-input').on('keypress', function (e) {
+        if (e.which == 13) {
+            let barcode = ($(this).val() || '').trim();
+            if (barcode) {
+                addProduct(barcode);
+                $(this).val('');
+            }
+        }
+    });
+
+    $('#add-btn').click(function () {
+        let barcode = ($('#barcode-input').val() || '').trim();
+        if (barcode) addProduct(barcode);
+        $('#barcode-input').val('');
+    });
+
+    function normalizeBarcode(b) {
+        return (b || '').toString().trim().replace(/[^0-9A-Za-z]/g, '') ;
+    }
+
+    function addProduct(barcode) {
+        const normalized = normalizeBarcode(barcode);
+        if (!normalized) return;
+
+        $.ajax({
+            url: "{% url 'get_product' %}",
+            data: { 'barcode': normalized },
+            success: function (data) {
+                if (data.success) {
+                    addToCart(data);
+                } else {
+                    // If product not found on server, try to match with existing cart items
+                    const normalizedCartKey = (x) => normalizeBarcode(x);
+                    let existing = cart.find(p => normalizedCartKey(p.barcode) === normalized);
+                    if (existing) {
+                        existing.quantity = (existing.quantity || 1) + 1;
+                        renderCart();
+                    } else {
+                        // no matching cart item — inform user
+                        $('#scan-status').text('Product not found').show().delay(1500).fadeOut();
+                    }
+                }
+            }
+        });
+    }
+
+    function addToCart(product) {
+        // normalize product object and avoid propagating non-product keys
+        const prodObj = {
+            id: product.id,
+            name: product.name,
+            barcode: (product.barcode || '').toString().trim(),
+            price: Number(product.price) || 0,
+            gst: Number(product.gst) || 0,
+            quantity: 1
+        };
+
+        let existing = cart.find(p => p.id === prodObj.id);
+        if (existing) {
+            existing.quantity++;
+        } else {
+            cart.push(prodObj);
+        }
+        renderCart();
+    }
+
+    function renderCart() {
+        let tbody = $('#cart-body');
+        tbody.empty();
+        let subtotal = 0;
+        let gstTotal = 0;
+
+        cart.forEach((item, index) => {
+            const qty = Number(item.quantity) || 1;
+            const total = Number(item.price) * qty;
+            subtotal += total;
+            gstTotal += total * (Number(item.gst) / 100 || 0);
+
+            const row = $('<tr>');
+            row.append($('<td>').text(item.name || 'Unknown'));
+            row.append($('<td>').text('₹' + Number(item.price).toFixed(2)));
+            row.append($('<td>').html(`<input type="number" min="1" class="form-control qty-input" data-index="${index}" value="${qty}">`));
+            row.append($('<td>').text('₹' + total.toFixed(2)));
+            row.append($('<td>').html(`<button class="btn btn-danger btn-sm remove-btn" data-index="${index}">Remove</button>`));
+
+            tbody.append(row);
+        });
+
+        const grand = subtotal + gstTotal;
+        $('#subtotal').text('₹' + subtotal.toFixed(2));
+        $('#gst-total').text('₹' + gstTotal.toFixed(2));
+        $('#grand-total').text('₹' + grand.toFixed(2));
+    }
+
+    // update quantity when changed
+    $(document).on('change', '.qty-input', function () {
+        const index = $(this).data('index');
+        const val = Number($(this).val()) || 1;
+        if (cart[index]) {
+            cart[index].quantity = val;
+            renderCart();
+        }
+    });
+
+    $(document).on('click', '.remove-btn', function () {
+        let index = $(this).data('index');
+        cart.splice(index, 1);
+        renderCart();
+    });
+
+    $('#generate-bill').click(function () {
+        if (cart.length === 0) {
+            alert('Cart is empty!');
+            return;
+        }
+
+        let customerName = $('#customer-name').val();
+
+        $.ajax({
+            url: "{% url 'save_sale' %}",
+            method: 'POST',
+            headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+            data: JSON.stringify({
+                items: cart,
+                customer_name: customerName
+            }),
+            contentType: 'application/json',
+            success: function (response) {
+                if (response.success) {
+                    window.location.href = "/invoice/" + response.transaction_id;
+                } else {
+                    alert('Error: ' + response.error);
+                }
+            }
+        });
+    });
+
+    // Camera Scanner with device selection using QuaggaJS
+    let currentCameraId = null;
+    let scanning = false;
+
+    // Removed camera selection UI — scanning runs hidden in background and uses default environment camera
+    async function listAndSelectCameras() {
+        // populate camera select dropdown and warm up permissions
+        try {
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    stream.getTracks().forEach(t => t.stop());
+                } catch (permErr) {
+                    console.debug('camera permission not granted', permErr);
+                }
+            }
+
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const cameras = devices.filter(d => d.kind === 'videoinput');
+            const select = $('#camera-select');
+            select.empty();
+            select.append($('<option>').val('').text('Default camera (auto)'));
+            if (!cameras || cameras.length === 0) {
+                select.append($('<option>').text('No cameras found'));
+                return;
+            }
+
+            cameras.forEach((cam, i) => select.append($('<option>').val(cam.deviceId).text(cam.label || `Camera ${i + 1}`)));
+            const envCam = cameras.find(d => /back|rear|environment|builtin/i.test(d.label));
+            currentCameraId = envCam ? envCam.deviceId : (cameras[0] && cameras[0].deviceId);
+            if (currentCameraId) select.val(currentCameraId);
+        } catch (err) {
+            console.error('Error listing cameras', err);
+        }
+    }
+
+    function startScanner(deviceId) {
+        if (scanning) return;
+
+        // prefer explicitly selected camera when available
+        if (!deviceId && currentCameraId) deviceId = currentCameraId;
+
+        $('#reader').show();
+
+        // Clear the container and ensure it has proper structure
+        const readerDiv = document.querySelector('#reader');
+        readerDiv.innerHTML = '<video style="width:100%; height:100%; object-fit: cover;"></video><div class="small-hint">Hold barcode here</div>';
+
+        // verify Quagga is loaded and browser supports media APIs
+        if (typeof Quagga === 'undefined') {
+            console.error('QuaggaJS library not loaded');
+            alert('Scanner library not loaded');
+            $('#reader').hide();
+            return;
+        }
+
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            console.error('getUserMedia not supported in this browser');
+            alert('Camera not supported by this browser');
+            $('#reader').hide();
+            return;
+        }
+
+        console.log('Starting billing scanner, deviceId=', deviceId);
+
+        const config = {
+            inputStream: {
+                name: 'Live',
+                type: 'LiveStream',
+                target: readerDiv,
+                constraints: {
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    facingMode: 'environment'
+                },
+                area: {
+                    top: '28%',
+                    right: '5%',
+                    left: '5%',
+                    bottom: '24%'
+                }
+            },
+            decoder: {
+                readers: [
+                    'ean_reader',
+                    'ean_8_reader',
+                    'upc_reader',
+                    'upc_e_reader',
+                    'code_128_reader',
+                    'code_39_reader',
+                    'codabar_reader',
+                    'i2of5_reader',
+                    // 'qr_reader' removed - Quagga core doesn't include QR reader in worker builds
+                ],
+                debug: {
+                    showCanvas: true,
+                    showPatternName: false,
+                    showConfidence: true,
+                    showMultiline: false
+                }
+            },
+            locator: {
+                patchSize: 'large',
+                halfSample: false
+            },
+            numOfWorkers: Math.max(1, (navigator.hardwareConcurrency || 2) - 1),
+            frequency: 12
+        };
+
+        // If a specific device is selected, add it to constraints
+        if (deviceId) {
+            config.inputStream.constraints.deviceId = { exact: deviceId };
+            console.log('Using deviceId constraint for camera:', deviceId);
+        }
+
+        Quagga.init(config, (err) => {
+            if (err) {
+                console.error('Quagga init failed:', err);
+                alert('Unable to access camera: ' + (err && err.message ? err.message : err));
+                $('#reader').hide();
+                return;
+            }
+
+            console.log('Quagga initialized successfully, starting stream...');
+            try {
+                Quagga.start();
+                scanning = true;
+
+                // debounce duplicate reads to avoid multiple adds
+                let lastDetected = null;
+                Quagga.onDetected((result) => {
+                    if (result && result.codeResult && result.codeResult.code) {
+                        const barcode = result.codeResult.code;
+                        if (barcode === lastDetected) return;
+                        lastDetected = barcode;
+                        console.log('Barcode detected:', barcode);
+                        addProduct(barcode);
+                        // reset after short delay to allow further scanning
+                        setTimeout(() => { lastDetected = null; }, 1200);
+                    }
+                });
+            } catch (startErr) {
+                console.error('Quagga start failed:', startErr);
+                $('#reader').hide();
+                alert('Failed to start camera stream: ' + (startErr && startErr.message ? startErr.message : startErr));
+            }
+        });
+    }
+
+    function stopScanner() {
+        if (!scanning) return;
+
+        try {
+            Quagga.stop();
+            Quagga.offDetected();
+        } catch (e) {
+            console.warn('Quagga stop error:', e);
+        }
+
+        scanning = false;
+        try { const rd = document.querySelector('#reader'); if (rd) rd.innerHTML = ''; } catch(e){}
+    }
+
+    // start-camera button removed — scanner auto-starts on barcode input focus
+
+    // Auto-start scanner when barcode input focused
+    $('#barcode-input').on('focus', async function () {
+        if (scanning) return;
+        await listAndSelectCameras();
+        const chosen = $('#camera-select').val();
+        currentCameraId = chosen || currentCameraId;
+        startScanner(currentCameraId);
+    });
+
+    // stop-camera control removed
+
+    // Change camera when user selects a different device
+    $('#camera-select').on('change', function () {
+        const id = $(this).val();
+        currentCameraId = id || null;
+        if (scanning) {
+            stopScanner();
+            setTimeout(() => startScanner(currentCameraId), 300);
+        }
+    });
+</script>
+{% endblock %}
