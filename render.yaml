@@ -1,0 +1,15 @@
+# render.yaml - Render deployment configuration
+services:
+  - type: web
+    name: inventory-management
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
+    startCommand: gunicorn inventory.wsgi
+    envVars:
+      - key: DEBUG
+        value: 'False'
+      - key: SECRET_KEY
+        sync: false
+      - key: ALLOWED_HOSTS
+        value: 'your-app.onrender.com'
